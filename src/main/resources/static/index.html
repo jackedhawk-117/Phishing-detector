@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>PH!SHING DETECTOR.nfo</title>
+    <style>
+        body {
+          background-color: black;
+          color: #e0e0e0;
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 14px;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+        }
+
+        .nfo-container {
+          border: 1px solid #888;
+          padding: 40px;
+          width: 90%;
+          max-width: 800px;
+          background-color: black;
+          text-align: left;
+          white-space: pre-wrap;
+        }
+
+        .ascii-logo {
+          border: 1px solid #ff4444;
+          color: #ff4444;
+          text-align: center;
+          font-weight: bold;
+          padding: 10px;
+          margin-bottom: 30px;
+        }
+
+        .divider {
+          text-align: center;
+          color: #888;
+          margin-bottom: 20px;
+        }
+
+        .section {
+          margin-top: 1em;
+        }
+
+        .section label {
+          color: #ccc;
+        }
+
+        .input-container {
+          margin-top: 10px;
+        }
+
+        input[type="text"], textarea {
+          background: black;
+          color: #e0e0e0;
+          border: 1px solid #888;
+          padding: 10px;
+          font-family: inherit;
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 10px;
+        }
+
+        textarea {
+          height: 150px;
+          resize: vertical;
+        }
+
+        .button {
+          display: inline-block;
+          margin-top: 15px;
+          padding: 8px 16px;
+          background-color: #ff4444;
+          color: black;
+          font-weight: bold;
+          border: none;
+          cursor: pointer;
+          margin-right: 10px;
+        }
+
+        .button:hover {
+          background-color: #cc0000;
+        }
+
+        .feedback-btn {
+          padding: 5px 10px;
+          margin: 0 5px;
+          cursor: pointer;
+        }
+
+        #output {
+          margin-top: 20px;
+          border-top: 1px solid #555;
+          padding-top: 15px;
+          display: none;
+        }
+
+        #feedback {
+          margin-top: 20px;
+          display: none;
+        }
+
+        ul {
+          padding-left: 20px;
+        }
+
+        ul li {
+          color: #aaa;
+        }
+
+        strong {
+          color: #fff;
+        }
+
+        .confidence-meter {
+          display: inline-block;
+          width: 100px;
+          height: 10px;
+          background-color: #333;
+          margin-left: 10px;
+          vertical-align: middle;
+        }
+
+        .confidence-fill {
+          height: 100%;
+          background-color: #ff4444;
+        }
+    </style>
+</head>
+<body>
+<div class="nfo-container">
+    <div class="ascii-logo">
+        PH!SH!NG DETECTOR v2.0 (LEARNING MODE)
+    </div>
+
+    <div class="divider">───[ Email Analyzer Terminal Interface ]───</div>
+
+    <div class="section">
+        <label>Paste suspicious email text below:</label>
+        <form id="phishForm" class="input-container">
+            <textarea id="emailText" placeholder="> Paste full email here including headers if possible..."></textarea>
+            <button class="button" type="submit">Analyze</button>
+        </form>
+    </div>
+
+    <div id="output">
+        <div>
+            <strong>Result:</strong>
+            <span id="resultText"></span>
+            <span id="confidenceMeter" class="confidence-meter">
+                <span class="confidence-fill" id="confidenceFill"></span>
+            </span>
+            <span id="confidenceText"></span>
+        </div>
+        <div>
+            <strong>Features:</strong>
+            <ul id="featuresList"></ul>
+        </div>
+    </div>
+
+    <div id="feedback">
+        <p>Was this classification correct?</p>
+        <button id="correct-btn" class="button">✅ Correct</button>
+        <button id="incorrect-btn" class="button">❌ Incorrect</button>
+        <div id="feedbackThanks" style="display: none; margin-top: 10px; color: #4CAF50;">
+            Thank you for improving the system!
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPrediction = null;
+
+    document.getElementById('phishForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const emailText = document.getElementById('emailText').value.trim();
+        if (!emailText) return;
+
+        try {
+            const res = await fetch('/api/phishing/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `emailText=${encodeURIComponent(emailText)}`
+            });
+
+            const data = await res.json();
+            currentPrediction = data.phishing;
+            const confidence = Number(data.confidence);
+            const confidencePercent = Math.round(confidence * 100);
+
+            // Display results
+            document.getElementById('output').style.display = 'block';
+            document.getElementById('resultText').textContent =
+                data.phishing ? '⚠️ PHISHING DETECTED' : '✅ LEGITIMATE';
+
+            // Update confidence meter
+            document.getElementById('confidenceFill').style.width = `${confidencePercent}%`;
+            document.getElementById('confidenceText').textContent = `${confidencePercent}% confidence`;
+
+            // Display features
+            const features = data.features || {};
+            document.getElementById('featuresList').innerHTML = `
+                <li>Contains URL: ${features.has_url ? 'Yes' : 'No'}</li>
+                <li>Urgency Words: ${features.urgency_words ?? 0}</li>
+                <li>Blacklisted Domain: ${features.blacklisted_domain ? 'Yes' : 'No'}</li>
+                <li>Suspicious Subject: ${features.suspicious_subject ? 'Yes' : 'No'}</li>
+                <li>Link/Text Ratio: ${Math.round((features.link_ratio || 0) * 100)}%</li>
+                <li>Spoofed Brands: ${features.spoofed_brands ? 'Yes' : 'No'}</li>
+                <li>Sensitive Keywords: ${features.sensitive_keywords || 0}</li>
+            `;
+
+            // Show feedback options
+            document.getElementById('feedback').style.display = 'block';
+            document.getElementById('feedbackThanks').style.display = 'none';
+
+        } catch (err) {
+            console.error(err);
+            alert("Error analyzing email. Please try again.");
+        }
+    });
+
+    // Feedback handlers
+    document.getElementById('correct-btn').addEventListener('click', async () => {
+        await submitFeedback(true);
+        document.getElementById('feedbackThanks').style.display = 'block';
+    });
+
+    document.getElementById('incorrect-btn').addEventListener('click', async () => {
+        await submitFeedback(false);
+        document.getElementById('feedbackThanks').style.display = 'block';
+    });
+
+    async function submitFeedback(isCorrect) {
+        const emailText = document.getElementById('emailText').value.trim();
+        if (!emailText) return;
+
+        try {
+            await fetch('/api/phishing/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    emailText: emailText,
+                    systemPrediction: currentPrediction,
+                    wasCorrect: isCorrect
+                })
+            });
+        } catch (err) {
+            console.error('Feedback submission failed:', err);
+        }
+    }
+</script>
+</body>
+</html>
