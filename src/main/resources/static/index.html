@@ -116,25 +116,41 @@
           color: #fff;
         }
 
-        .confidence-meter {
+        .confidence-badge {
           display: inline-block;
-          width: 100px;
-          height: 10px;
-          background-color: #333;
-          margin-left: 10px;
-          vertical-align: middle;
+          padding: 2px 8px;
+          font-weight: bold;
+          margin-left: 8px;
         }
 
-        .confidence-fill {
-          height: 100%;
+        .confidence-HIGH {
           background-color: #ff4444;
+          color: #000;
+        }
+
+        .confidence-MEDIUM {
+          background-color: #ffaa00;
+          color: #000;
+        }
+
+        .confidence-LOW {
+          background-color: #555;
+          color: #e0e0e0;
+        }
+
+        .reasoning {
+          margin-top: 10px;
+          padding: 10px;
+          border-left: 3px solid #ff4444;
+          color: #ccc;
+          font-style: italic;
         }
     </style>
 </head>
 <body>
 <div class="nfo-container">
     <div class="ascii-logo">
-        PH!SH!NG DETECTOR v2.0 (LEARNING MODE)
+        PH!SH!NG DETECTOR v3.0 (GROQ LLM MODE)
     </div>
 
     <div class="divider">───[ Email Analyzer Terminal Interface ]───</div>
@@ -151,11 +167,9 @@
         <div>
             <strong>Result:</strong>
             <span id="resultText"></span>
-            <span id="confidenceMeter" class="confidence-meter">
-                <span class="confidence-fill" id="confidenceFill"></span>
-            </span>
-            <span id="confidenceText"></span>
+            <span id="confidenceBadge" class="confidence-badge"></span>
         </div>
+        <div class="reasoning" id="reasoningBox" style="display: none;"></div>
         <div>
             <strong>Features:</strong>
             <ul id="featuresList"></ul>
@@ -167,7 +181,7 @@
         <button id="correct-btn" class="button">✅ Correct</button>
         <button id="incorrect-btn" class="button">❌ Incorrect</button>
         <div id="feedbackThanks" style="display: none; margin-top: 10px; color: #4CAF50;">
-            Thank you for improving the system!
+            Thank you for your feedback!
         </div>
     </div>
 </div>
@@ -189,24 +203,32 @@
 
             const data = await res.json();
             currentPrediction = data.phishing;
-            const confidence = Number(data.confidence);
-            const confidencePercent = Math.round(confidence * 100);
 
             // Display results
             document.getElementById('output').style.display = 'block';
             document.getElementById('resultText').textContent =
                 data.phishing ? '⚠️ PHISHING DETECTED' : '✅ LEGITIMATE';
 
-            // Update confidence meter
-            document.getElementById('confidenceFill').style.width = `${confidencePercent}%`;
-            document.getElementById('confidenceText').textContent = `${confidencePercent}% confidence`;
+            // Update confidence badge
+            const badge = document.getElementById('confidenceBadge');
+            const confidence = data.confidence || 'LOW';
+            badge.textContent = confidence;
+            badge.className = 'confidence-badge confidence-' + confidence;
+
+            // Show reasoning
+            const reasoningBox = document.getElementById('reasoningBox');
+            if (data.reasoning) {
+                reasoningBox.textContent = '💡 ' + data.reasoning;
+                reasoningBox.style.display = 'block';
+            } else {
+                reasoningBox.style.display = 'none';
+            }
 
             // Display features
             const features = data.features || {};
             document.getElementById('featuresList').innerHTML = `
                 <li>Contains URL: ${features.has_url ? 'Yes' : 'No'}</li>
                 <li>Urgency Words: ${features.urgency_words ?? 0}</li>
-                <li>Blacklisted Domain: ${features.blacklisted_domain ? 'Yes' : 'No'}</li>
                 <li>Suspicious Subject: ${features.suspicious_subject ? 'Yes' : 'No'}</li>
                 <li>Link/Text Ratio: ${Math.round((features.link_ratio || 0) * 100)}%</li>
                 <li>Spoofed Brands: ${features.spoofed_brands ? 'Yes' : 'No'}</li>

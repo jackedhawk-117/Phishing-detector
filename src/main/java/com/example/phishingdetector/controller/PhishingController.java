@@ -1,7 +1,8 @@
 package com.example.phishingdetector.controller;
 
+import com.example.phishingdetector.model.PhishingResult;
 import com.example.phishingdetector.service.FeedbackService;
-import com.example.phishingdetector.service.PhishingModelService;
+import com.example.phishingdetector.service.GroqPhishingService;
 import com.example.phishingdetector.util.EmailFeatureExtractor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,7 +10,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,12 +17,12 @@ import java.util.Map;
 @RequestMapping("/api/phishing")
 @CrossOrigin(origins = "*")
 public class PhishingController {
-    private final PhishingModelService service;
+    private final GroqPhishingService groqService;
     private final FeedbackService feedbackService;
 
-    public PhishingController(PhishingModelService service,
+    public PhishingController(GroqPhishingService groqService,
                               FeedbackService feedbackService) {
-        this.service = service;
+        this.groqService = groqService;
         this.feedbackService = feedbackService;
     }
 
@@ -44,18 +44,20 @@ public class PhishingController {
                         .body(Map.of("error", "Authentication required"));
             }
 
-            double prob = service.score(emailText);
-            boolean isPhishing = prob >= 0.5;
+            // Call Groq LLM for phishing analysis
+            PhishingResult result = groqService.analyze(emailText);
 
+            // Also extract local features as supplementary info
             Map<String, Object> features = extractFeatures(emailText);
             features.put("user", user.getEmail());
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("phishing", isPhishing);
-            result.put("confidence", prob);
-            result.put("features", features);
+            Map<String, Object> response = new HashMap<>();
+            response.put("phishing", result.isPhishing());
+            response.put("confidence", result.getConfidence());
+            response.put("reasoning", result.getReasoning());
+            response.put("features", features);
 
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to analyze email: " + e.getMessage()));
@@ -70,26 +72,18 @@ public class PhishingController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        try {
-            feedbackService.processFeedback(
-                    request.getEmailText(),
-                    request.getSystemPrediction(),
-                    request.getWasCorrect()
-            );
-            return ResponseEntity.ok().build();
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Failed to process feedback: " + e.getMessage()));
-        }
+        feedbackService.processFeedback(
+                request.getEmailText(),
+                request.getSystemPrediction(),
+                request.getWasCorrect()
+        );
+        return ResponseEntity.ok().build();
     }
 
     private Map<String, Object> extractFeatures(String emailText) {
         Map<String, Object> features = new HashMap<>();
         features.put("has_url", EmailFeatureExtractor.containsUrl(emailText));
         features.put("urgency_words", EmailFeatureExtractor.countUrgencyWords(emailText));
-        features.put("blacklisted_domain",
-                EmailFeatureExtractor.extractDomain(emailText) != null &&
-                        service.isBlacklistedDomain(EmailFeatureExtractor.extractDomain(emailText)));
         features.put("suspicious_subject", EmailFeatureExtractor.hasSuspiciousSubject(emailText));
         features.put("link_ratio", EmailFeatureExtractor.linkToTextRatio(emailText));
         features.put("spoofed_brands", EmailFeatureExtractor.hasSpoofedBrands(emailText));
